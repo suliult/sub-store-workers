@@ -83,6 +83,30 @@ jobs:
         if: steps.check.outputs.needed == 'true'
         run: corepack enable
 
+      - name: Configure upstream pnpm build scripts
+        if: steps.check.outputs.needed == 'true'
+        working-directory: Sub-Store/backend
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'pnpm-workspace.yaml';
+          const approved = ['core-js', 'esbuild', 'nodemon'];
+          let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+          text = text.replace(/^allowBuilds:\n(?:[ \t].*(?:\n|$))*/m, '');
+          if (!/^packages:/m.test(text)) {
+            text = `packages:\n  - .\n${text.trim() ? `\n${text.trimStart()}` : ''}`;
+          }
+          const existing = new Set([...text.matchAll(/^\s*-\s+([^\s#]+)/gm)].map((match) => match[1]));
+          const missing = approved.filter((name) => !existing.has(name));
+          if (!/^onlyBuiltDependencies:/m.test(text)) {
+            text = `${text.replace(/\s*$/, '')}\nonlyBuiltDependencies:\n${approved.map((name) => `  - ${name}`).join('\n')}\n`;
+          } else if (missing.length) {
+            text = text.replace(/^onlyBuiltDependencies:\n/m, `onlyBuiltDependencies:\n${missing.map((name) => `  - ${name}\n`).join('')}`);
+          }
+          fs.writeFileSync(file, text);
+          NODE
+          cat pnpm-workspace.yaml
+
       - name: Install upstream deps
         if: steps.check.outputs.needed == 'true'
         working-directory: Sub-Store/backend
